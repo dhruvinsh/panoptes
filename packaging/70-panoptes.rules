@@ -1,0 +1,25 @@
+# udev rule for the ESP32 "Cheap Yellow Display" (ESP32-2432S028R, CH340 USB-serial),
+# used by the panoptes host agent.
+#
+#  * creates stable symlinks /dev/panoptes and /dev/cyd (the old name, kept for
+#    compatibility); panoptes prefers /dev/panoptes, then /dev/cyd
+#  * TAG+="uaccess" gives the user logged in at the local seat read/write access via
+#    an ACL, so no uucp/dialout group membership is needed
+#
+# Install:
+#   sudo install -m 0644 packaging/70-panoptes.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=tty
+#   (or unplug/replug the board)
+#   If you installed the old 99-cyd.rules, remove it: sudo rm /etc/udev/rules.d/99-cyd.rules
+#
+# The file is numbered 70 so it runs before systemd's 73-seat-late.rules, which turns
+# the "uaccess" tag into the ACL.
+#
+# Caveat: 1a86:7523 is a generic CH340 ID also used by many Arduino clones etc.;
+# they will get the same symlinks/ACL.
+
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="panoptes cyd", MODE="0660", TAG+="uaccess"
+
+# Boards with a CH9102 (1a86:55d4) or CP2102 (10c4:ea60) instead - uncomment yours:
+#SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4", SYMLINK+="panoptes cyd", MODE="0660", TAG+="uaccess"
+#SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="panoptes cyd", MODE="0660", TAG+="uaccess"

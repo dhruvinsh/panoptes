@@ -1,0 +1,89 @@
+name: Release
+
+# Push a tag like v0.2.0 to publish binaries, firmware images and the web flasher.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    name: Host binaries (GoReleaser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  firmware:
+    name: Firmware images
+    needs: binaries # the release exists once GoReleaser is done
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ hashFiles('firmware/platformio.ini') }}
+      - run: pip install --upgrade platformio
+      - name: Build with the tag as firmware version
+        working-directory: firmware
+        env:
+          PLATFORMIO_BUILD_FLAGS: -DFW_VERSION=\"${{ github.ref_name }}\"
+        run: pio run -e cyd -e cyd-ili9341
+      - name: Collect assets
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          mkdir -p out
+          cp firmware/.pio/build/cyd/factory.bin          "out/panoptes-firmware-${v}-st7789-factory.bin"
+          cp firmware/.pio/build/cyd/firmware.bin         "out/panoptes-firmware-${v}-st7789-app.bin"
+          cp firmware/.pio/build/cyd-ili9341/factory.bin  "out/panoptes-firmware-${v}-ili9341-factory.bin"
+          cp firmware/.pio/build/cyd-ili9341/firmware.bin "out/panoptes-firmware-${v}-ili9341-app.bin"
+          (cd out && sha256sum ./*.bin > firmware-checksums.txt)
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" out/* --clobber
+      - name: Stage web flasher
+        run: |
+          mkdir -p site
+          cp web/index.html site/
+          cp firmware/.pio/build/cyd/factory.bin site/panoptes-st7789.bin
+          cp firmware/.pio/build/cyd-ili9341/factory.bin site/panoptes-ili9341.bin
+          for p in st7789 ili9341; do
+            sed -e "s/@VERSION@/${GITHUB_REF_NAME}/" -e "s/@PANEL@/${p}/g" web/manifest.json.in > "site/manifest-${p}.json"
+          done
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  pages:
+    name: Web flasher (GitHub Pages)
+    needs: firmware
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

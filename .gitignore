@@ -1,0 +1,16 @@
+# Flash dump of the board's previous firmware: contains WiFi credentials. Never commit.
+/backup/
+
+# build output
+/dist/
+/panoptes
+/panoptes.exe
+firmware/.pio/
+site/
+out/
+
+# editors / tooling
+.vscode/
+.idea/
+.mypy_cache/
+.DS_Store

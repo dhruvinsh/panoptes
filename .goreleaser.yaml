@@ -1,0 +1,41 @@
+version: 2
+project_name: panoptes
+
+builds:
+  - id: panoptes
+    main: ./cmd/panoptes
+    binary: panoptes
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: panoptes
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - docs/host.md
+      - packaging/*
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^chore:", "^ci:"]
+
+release:
+  footer: |
+    **Firmware:** flash from the browser at https://dhruvinsh.github.io/panoptes/
+    or with esptool: `esptool --chip esp32 write-flash 0 panoptes-firmware-*-st7789-factory.bin`

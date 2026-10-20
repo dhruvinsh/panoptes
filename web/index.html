@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panoptes Flasher</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.1.0/dist/web/install-button.js?module"></script>
+  <style>
+    :root { --bg: #f6f7f9; --fg: #14181f; --sub: #5b6573; --card: #fff; --line: #dde2e8; --accent: #0e7490; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #000; --fg: #f2f5f8; --sub: #a3aebb; --card: #0f161f; --line: #263241; --accent: #22d3ee; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg);
+           font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 640px; margin: 0 auto; padding: 48px 16px; }
+    h1 { margin: 0 0 4px; font-size: 2rem; letter-spacing: -0.02em; }
+    .tag { color: var(--sub); margin: 0 0 32px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+            padding: 20px; margin-bottom: 16px; }
+    .card h2 { margin: 0 0 4px; font-size: 1.1rem; }
+    .card p { margin: 0 0 16px; color: var(--sub); }
+    esp-web-install-button button { font: inherit; font-weight: 600; padding: 10px 18px; border: 0;
+            border-radius: 8px; background: var(--accent); color: var(--bg); cursor: pointer; }
+    ol { padding-left: 20px; color: var(--sub); }
+    code { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Panoptes</h1>
+  <p class="tag">All-seeing PC monitor for the ESP32 "Cheap Yellow Display" (ESP32-2432S028R).</p>
+
+  <div class="card">
+    <h2>ST7789 panel</h2>
+    <p>The panel on the reference board. Pick this first.</p>
+    <esp-web-install-button manifest="manifest-st7789.json">
+      <button slot="activate">Flash ST7789 build</button>
+    </esp-web-install-button>
+  </div>
+
+  <div class="card">
+    <h2>ILI9341 panel</h2>
+    <p>If the ST7789 build shows a scrambled picture, flash this one instead.</p>
+    <esp-web-install-button manifest="manifest-ili9341.json">
+      <button slot="activate">Flash ILI9341 build</button>
+    </esp-web-install-button>
+  </div>
+
+  <ol>
+    <li>Use Chrome or Edge on a desktop. Web Serial isn't available in Firefox or Safari.</li>
+    <li>Plug the board in over USB and close any running <code>panoptes</code> agent, so the port is free.</li>
+    <li>After flashing, install the host agent from the
+      <a href="https://github.com/dhruvinsh/panoptes/releases/latest">latest release</a> and run <code>panoptes</code>.</li>
+  </ol>
+</main>
+</body>
+</html>
