@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dhruvinsh/panoptes/internal/frame"
 	"github.com/dhruvinsh/panoptes/internal/logx"
@@ -310,7 +311,8 @@ func TestParsePmset(t *testing.T) {
 }
 
 func TestRateTracker(t *testing.T) {
-	var r RateTracker
+	tick := time.Unix(1000, 0)
+	r := RateTracker{now: func() time.Time { tick = tick.Add(time.Second); return tick }}
 	if r.Update(map[string]float64{"a": 10}) != nil {
 		t.Fatal("first update must be nil")
 	}

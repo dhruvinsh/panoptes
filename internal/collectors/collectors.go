@@ -152,11 +152,16 @@ func toFloat(v any) float64 {
 type RateTracker struct {
 	prevT time.Time
 	prev  map[string]float64
+	now   func() time.Time // nil = time.Now; tests inject a clock (Windows' is too coarse)
 }
 
 // Update records values and returns rates since the previous call (nil on the first).
 func (r *RateTracker) Update(values map[string]float64) map[string]float64 {
-	now := time.Now()
+	clock := r.now
+	if clock == nil {
+		clock = time.Now
+	}
+	now := clock()
 	prevT, prev := r.prevT, r.prev
 	r.prevT = now
 	r.prev = make(map[string]float64, len(values))
