@@ -125,14 +125,37 @@ func DisplayMount(m, goos string) string {
 // DiskMounts: disk.mounts (GiB), rescanned every 30 s.
 type DiskMounts struct {
 	noPrime
+	Only    []string // from the config: show exactly these instead of picking filesystems
 	mounts  []string
 	scanned time.Time
 }
 
 func (*DiskMounts) Name() string { return "disk.mounts" }
 
+// normalizeMounts cleans configured mount points: at most MaxMounts, no blanks, and
+// Windows drive letters in the "C:\" form gopsutil expects.
+func normalizeMounts(in []string, goos string) []string {
+	var out []string
+	for _, m := range in {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			continue
+		}
+		if goos == "windows" && !strings.HasSuffix(m, `\`) && len(m) == 2 && m[1] == ':' {
+			m += `\`
+		}
+		out = append(out, m)
+	}
+	if len(out) > MaxMounts {
+		out = out[:MaxMounts]
+	}
+	return out
+}
+
 func (d *DiskMounts) Collect(out *frame.Obj) error {
-	if d.scanned.IsZero() || time.Since(d.scanned) > rescanMounts {
+	if d.Only != nil {
+		d.mounts = d.Only
+	} else if d.scanned.IsZero() || time.Since(d.scanned) > rescanMounts {
 		parts, err := disk.Partitions(false)
 		if err != nil && len(parts) == 0 {
 			return err

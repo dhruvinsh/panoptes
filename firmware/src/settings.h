@@ -2,10 +2,15 @@
 #pragma once
 #include <stdint.h>
 
+#include "config.h"
+
 struct Settings {
   uint8_t bright = 200;      // 0..255 manual backlight
   bool autoBright = true;    // use the LDR
   bool led = true;           // RGB status LED
+  uint8_t ledBright = LED_MAX_DUTY;  // 0..255 LED brightness at full output
+  uint8_t blMin = BL_AUTO_FLOOR;     // 0..255 auto-brightness never goes below this
+  uint8_t blNight = BL_NIGHT;        // 0..255 backlight in night mode
   bool beep = false;         // speaker chirp on alert
   uint8_t rotate = 0;        // 0 landscape, 1 landscape flipped
   uint16_t cycle = 0;        // auto-advance seconds, 0 = off

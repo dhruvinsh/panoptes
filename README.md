@@ -44,6 +44,15 @@ stay off: no network setup, no cloud, nothing to pair.
    ```sh
    panoptes                                # auto-detects the board
    panoptes --theme nord --theme-mode auto # pick a theme
+   ```
+   Or set it once in the config file (`~/.config/panoptes/config.toml`) so manual runs and the
+   service both use it:
+   ```toml
+   #:schema https://raw.githubusercontent.com/dhruvinsh/panoptes/main/schema/config.schema.json
+   theme = "catppuccin"
+   theme_mode = "auto"
+   ```
+   ```sh
    panoptes install-service                # start at login (systemd / launchd / Task Scheduler)
    ```
    On Linux, if you get *permission denied*, install the udev rule:
@@ -57,7 +66,8 @@ stay off: no network setup, no cloud, nothing to pair.
 | [cmd/panoptes](cmd/panoptes), [internal/](internal/) | Go host agent |
 | [firmware/](firmware/) | PlatformIO + LovyanGFX firmware ([README](firmware/README.md)) |
 | [PROTOCOL.md](PROTOCOL.md) | Newline-delimited JSON over 115200-baud serial |
-| [docs/host.md](docs/host.md) | Agent install, config file, services, sensors per OS, troubleshooting |
+| [docs/host.md](docs/host.md), [docs/config.example.toml](docs/config.example.toml) | Agent install, config file, services, sensors per OS, troubleshooting |
+| [schema/](schema/) | JSON Schema for `config.toml` (editor completion), generated from the agent |
 | [packaging/](packaging/) | udev rule (`/dev/panoptes`) |
 | [web/](web/) | ESP Web Tools flasher, deployed to GitHub Pages on release |
 

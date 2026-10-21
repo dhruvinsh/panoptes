@@ -175,3 +175,82 @@ func TestThemeFromConfigFileValidated(t *testing.T) {
 		t.Fatalf("got %s", got)
 	}
 }
+
+// Every option in the registry that isn't file-only must have a command-line flag
+// (so --help and the config file stay in step).
+func TestEveryNonFileOptionHasAFlag(t *testing.T) {
+	fs := newFlagSet(&Parsed{}, map[string]**bool{})
+	for _, o := range config.Options {
+		if o.Kind == config.KindFile {
+			if fs.Lookup(strings.ReplaceAll(o.Key, "_", "-")) != nil {
+				t.Errorf("%s is file-only but has a flag", o.Key)
+			}
+			continue
+		}
+		if fs.Lookup(strings.ReplaceAll(o.Key, "_", "-")) == nil {
+			t.Errorf("option %s has no flag", o.Key)
+		}
+	}
+}
+
+// A run (manual or as a service, which runs plain `panoptes`) takes its theme from the
+// config file in the user's config dir, and a flag overrides it.
+func TestThemeFromConfigDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "panoptes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "panoptes", "config.toml"),
+		[]byte("theme = \"catppuccin\"\ntheme_mode = \"auto\"\nbright = 90\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfgLine := func(args ...string) string {
+		var out, errb bytes.Buffer
+		if code := Main("test", append([]string{"--dry-run", "--once", "--demo", "--interval", "0.1"}, args...), &out, &errb); code != 0 {
+			t.Fatalf("exit %d: %s", code, errb.String())
+		}
+		return strings.Split(out.String(), "\n")[1]
+	}
+	if got := cfgLine(); got != `{"t":"cfg","bright":90,"theme":"catppuccin","theme_mode":"auto"}` {
+		t.Fatalf("got %s", got)
+	}
+	if got := cfgLine("--theme", "nord"); got != `{"t":"cfg","bright":90,"theme":"nord","theme_mode":"auto"}` {
+		t.Fatalf("got %s", got)
+	}
+}
+
+func TestCollectorOptionsFromConfig(t *testing.T) {
+	var logs []string
+	defer logx.SetHook(func(l logx.Level, m string) {
+		if l >= logx.WARN {
+			logs = append(logs, m)
+		}
+	})()
+	f := config.Parse("disable = [\"GPU\", \"bogus\"]\nnet_interface = \"eth0\"\nmounts = [\"/\"]\n", "x")
+	o := collectorOptions(f)
+	if !reflect.DeepEqual(o.Disable, []string{"gpu"}) || o.NetIface != "eth0" || !reflect.DeepEqual(o.Mounts, []string{"/"}) {
+		t.Fatalf("got %+v", o)
+	}
+	if len(logs) != 1 || !strings.Contains(logs[0], "bogus") {
+		t.Fatalf("expected one warning about bogus: %v", logs)
+	}
+}
+
+func TestBrightnessOptions(t *testing.T) {
+	p := mustParse(t, "--led-bright", "40", "--night-bright", "0", "--auto-bright-min", "25")
+	got := cfgJSON(config.Merge(p.Values, config.Values{"led_bright": int64(10), "bright": int64(120)}))
+	if got != `{"t":"cfg","bright":120,"auto_bright_min":25,"night_bright":0,"led_bright":40}` {
+		t.Fatalf("got %s", got)
+	}
+	if got := p.Passthrough(); !reflect.DeepEqual(got, []string{"--auto-bright-min", "25", "--night-bright", "0", "--led-bright", "40"}) {
+		t.Fatalf("passthrough: %v", got)
+	}
+	for _, flag := range []string{"--led-bright", "--night-bright", "--auto-bright-min"} {
+		for _, v := range []string{"256", "-1"} {
+			if _, err := Parse([]string{flag + "=" + v}); err == nil {
+				t.Errorf("%s=%s should be rejected", flag, v)
+			}
+		}
+	}
+}

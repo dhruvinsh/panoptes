@@ -1,0 +1,46 @@
+#:schema https://raw.githubusercontent.com/dhruvinsh/panoptes/main/schema/config.schema.json
+#
+# Example panoptes config. Copy to:
+#   Linux    ~/.config/panoptes/config.toml
+#   macOS    ~/.config/panoptes/config.toml  (or ~/Library/Application Support/panoptes/)
+#   Windows  %AppData%\panoptes\config.toml  (or %USERPROFILE%\.config\panoptes\)
+#
+# Everything is optional; a commented-out line shows the default. Command-line options
+# override this file. Restart the login service after editing.
+
+# --- Look ---------------------------------------------------------------------------
+theme = "catppuccin"      # default, gruvbox, catppuccin, solarized, nord, dracula, tokyonight
+theme_mode = "auto"       # dark, light, or auto (follows the board's light sensor)
+
+# --- Brightness ---------------------------------------------------------------------
+# bright = 200            # backlight 0-255, used when auto_bright is off
+# auto_bright = true      # backlight from the light sensor
+# auto_bright_min = 18    # ...but never darker than this
+# night_bright = 4        # backlight in night mode (long-press the screen)
+# led = true              # RGB status LED that follows CPU load
+# led_bright = 90         # its maximum brightness, 0-255
+# beep = false            # speaker beep on alerts
+
+# --- Behaviour ----------------------------------------------------------------------
+# rotate = 0              # 0 landscape, 1 flipped
+# page = -1               # force a page (0-4); -1 leaves the board alone
+# cycle = 0               # auto-advance pages every N seconds; 0 = off
+# alert_temp = 90         # alert banner above this CPU temperature, °C
+# alert_cpu = 95          # ...or this CPU load, %
+
+# --- What is collected --------------------------------------------------------------
+# disable = ["procs"]     # gpu, temps, fans, battery, procs, disk, net
+# net_interface = "enp5s0"          # default: the default-route interface
+# mounts = ["/", "/mnt/data"]       # at most 4; default: picked automatically
+#                                   # Windows: ["C:\\", "D:\\"]
+
+# --- Agent --------------------------------------------------------------------------
+# port = "/dev/ttyUSB0"   # default: auto-detect (COM5 on Windows)
+# usb_ids = ["0403:6001"] # extra vid:pid of USB-serial chips to treat as the board
+# interval = 1.0          # seconds between frames
+# baud = 115200
+# verbose = false
+# log_file = "/tmp/panoptes.log"
+# hello_interval = 2.0
+# reconnect_interval = 2.0
+# handshake_timeout = 10.0

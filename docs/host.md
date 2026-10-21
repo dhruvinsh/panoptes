@@ -103,6 +103,9 @@ Sent as a `cfg` message after every handshake:
 | `--bright 0-255` | backlight level |
 | `--auto-bright` / `--no-auto-bright` | use the onboard light sensor |
 | `--led` / `--no-led` | RGB status LED |
+| `--led-bright 0-255` | maximum LED brightness (default 90) |
+| `--auto-bright-min 0-255` | lowest backlight auto-brightness uses (default 18) |
+| `--night-bright 0-255` | backlight in night mode (default 4) |
 | `--beep` / `--no-beep` | speaker alerts |
 | `--rotate 0\|1` | landscape / landscape flipped |
 | `--page N` | force page (-1 = leave alone) |
@@ -118,33 +121,89 @@ logged as e.g. `device theme: nord (mode auto, showing light)`; with `-v` you al
 
 ## Config file
 
-Optional TOML file; command-line options override it. Location (Go's `os.UserConfigDir()`):
+Optional TOML file; command-line options override it. The agent reads it on start, so it applies
+the same whether you run `panoptes` by hand or as a login service (restart the service after
+editing: `systemctl --user restart panoptes`, `launchctl kickstart -k gui/$(id -u)/com.dhruvinsh.panoptes`,
+or `schtasks /End /TN Panoptes` then `/Run`). Location:
 
 | OS | path |
 |---|---|
 | Linux | `~/.config/panoptes/config.toml` (`$XDG_CONFIG_HOME` honoured) |
-| macOS | `~/Library/Application Support/panoptes/config.toml` |
-| Windows | `%AppData%\panoptes\config.toml` |
+| macOS | `~/.config/panoptes/config.toml` if that directory exists, else `~/Library/Application Support/panoptes/config.toml` |
+| Windows | `~/.config/panoptes/config.toml` (i.e. `%USERPROFILE%\.config\panoptes`) if that directory exists, else `%AppData%\panoptes\config.toml` |
+
+`$XDG_CONFIG_HOME`, when set to an absolute path, wins on every OS. `panoptes --help` prints the
+path in use, and `--config PATH` points at another file. [`config.example.toml`](config.example.toml)
+lists every option; copy it as a starting point.
 
 ```toml
-# port = "/dev/panoptes"
-interval = 1.0
-bright = 180
-auto_bright = true
-led = true
-beep = false
-rotate = 0
-cycle = 0
-alert_temp = 90
-alert_cpu = 95
-theme = "default"      # gruvbox, catppuccin, solarized, nord, dracula, tokyonight
-theme_mode = "dark"    # or "light", "auto"
-# verbose = false
-# log_file = "/tmp/panoptes.log"
+#:schema https://raw.githubusercontent.com/dhruvinsh/panoptes/main/schema/config.schema.json
+
+theme = "catppuccin"   # default, gruvbox, catppuccin, solarized, nord, dracula, tokyonight
+theme_mode = "auto"    # dark, light, or auto (follows the board's light sensor)
 ```
 
-Keys may use `-` or `_` and may also live in a `[panoptes]` table. Unknown keys are ignored; an
-unknown `theme` / `theme_mode` is ignored with a warning. `--config PATH` points at another file.
+### Options
+
+Device options are sent to the board after every handshake (see PROTOCOL.md `cfg`). Everything
+here is optional.
+
+| key | default | meaning |
+|---|---|---|
+| `theme` | `"default"` | colour theme (see above) |
+| `theme_mode` | `"dark"` | `dark`, `light` or `auto` |
+| `bright` | `200` | backlight 0-255 (when `auto_bright` is off) |
+| `auto_bright` | `true` | backlight from the light sensor |
+| `auto_bright_min` | `18` | lowest backlight level auto-brightness goes to, 0-255 |
+| `night_bright` | `4` | backlight level in night mode (long-press the screen), 0-255 |
+| `led` | `true` | RGB status LED |
+| `led_bright` | `90` | maximum LED brightness, 0-255 |
+| `beep` | `false` | speaker beep on alerts |
+| `rotate` | `0` | `0` landscape, `1` flipped |
+| `page` | | force a page (0-4); `-1` leaves the board alone |
+| `cycle` | `0` | auto-advance pages every N seconds (0 = off) |
+| `alert_temp` | `90` | alert at this CPU temperature, °C |
+| `alert_cpu` | `95` | alert at this CPU load, % |
+| `port` | auto-detect | serial port, e.g. `/dev/ttyUSB0`, `COM5` |
+| `baud` | `115200` | |
+| `interval` | `1.0` | seconds between frames |
+| `verbose` | `false` | debug logging |
+| `log_file` | | also log to this file |
+
+These have no command-line flag, only the config file:
+
+| key | default | meaning |
+|---|---|---|
+| `disable` | `[]` | metric groups not to collect or send: `gpu`, `temps`, `fans`, `battery`, `procs`, `disk`, `net`. The board hides their widgets. Handy to save CPU (`procs` is the costliest) or to keep process names off the screen. |
+| `net_interface` | default-route interface | interface to graph, e.g. `"enp5s0"`, `"Wi-Fi"` |
+| `mounts` | auto | up to 4 mount points (or drive letters) to show instead of the automatic pick, e.g. `["/", "/mnt/data"]` |
+| `usb_ids` | `[]` | extra `"vid:pid"` (hex) of USB-serial chips to treat as the board, e.g. `["0403:6001"]` for an FTDI. Tried before the built-in CH340 / CH9102 / CP210x |
+| `hello_interval` | `2.0` | seconds between `hello` messages while waiting for the board |
+| `reconnect_interval` | `2.0` | seconds between reconnect attempts |
+| `handshake_timeout` | `10.0` | seconds to wait for `hi` before trying the next candidate port |
+
+Keys may use `-` or `_` and may also live in a `[panoptes]` table. An unknown key, or an unknown
+`theme` / `theme_mode`, is reported as a warning and ignored; the agent keeps running.
+`install-service --theme X` bakes the flag into the service, and a flag beats the config file, so
+leave `--theme` off `install-service` if you want the config file to choose.
+
+### Editor support
+
+The accepted keys are described by a JSON Schema in [`schema/config.schema.json`](../schema/config.schema.json),
+generated from the agent's own option table (a test fails if it goes stale). Point your editor at
+the raw GitHub URL for completion, hover docs and typo warnings:
+
+- **taplo (the TOML language server behind Even Better TOML, and neovim's `taplo` LSP):**
+  put `#:schema https://raw.githubusercontent.com/dhruvinsh/panoptes/main/schema/config.schema.json`
+  on the first line, as in the example above.
+- **Per project, with taplo:** a `.taplo.toml` containing
+  ```toml
+  [[rule]]
+  include = ["**/panoptes/config.toml"]
+  schema.path = "https://raw.githubusercontent.com/dhruvinsh/panoptes/main/schema/config.schema.json"
+  ```
+
+To pin the schema to a release, replace `main` with the tag in the URL.
 
 ## Run at login
 

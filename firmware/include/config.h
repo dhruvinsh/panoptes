@@ -111,7 +111,7 @@
 #define PIN_LED_R 4
 #define PIN_LED_G 16
 #define PIN_LED_B 17
-#define LED_MAX_DUTY 90  // 0..255; the LED is very bright, keep it subtle
+#define LED_MAX_DUTY 90  // default LED brightness, 0..255 (cfg.led_bright); the LED is very bright, keep it subtle
 
 #define PIN_LDR 34
 //  Raw (smoothed) ADC readings for "bright room" and "dark room". On most
@@ -159,8 +159,8 @@
 #define HOST_TIMEOUT_MS 5000    // no `s` frame for this long -> waiting screen
 #define UI_FRAME_MS 66          // ~15 fps render loop
 
-#define BL_AUTO_FLOOR 18        // auto-brightness never goes below this
-#define BL_NIGHT 4              // night-mode backlight level
+#define BL_AUTO_FLOOR 18        // default floor of auto-brightness (cfg.auto_bright_min)
+#define BL_NIGHT 4              // default night-mode backlight level (cfg.night_bright)
 
 #define ALERT_FRAMES_ON 5       // consecutive hot frames to enter alert
 #define ALERT_FRAMES_OFF 3      // consecutive cool frames to leave alert

@@ -61,10 +61,10 @@ void sensorsUpdate(uint32_t now) {
 
   float target;
   if (nightMode) {
-    target = BL_NIGHT;
+    target = settings.blNight;
   } else if (settings.autoBright) {
     float light = sqrtf(ldrLevel());  // perceptual-ish: rise faster out of the dark
-    target = BL_AUTO_FLOOR + (255 - BL_AUTO_FLOOR) * light;
+    target = settings.blMin + (255 - settings.blMin) * light;
   } else {
     target = settings.bright;
   }

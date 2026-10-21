@@ -135,6 +135,7 @@ func interfaceInfo() ifInfo {
 
 // Network: primary interface name, IPv4 and rx/tx byte rates.
 type Network struct {
+	Iface   string // force this interface (matched ignoring case); "" = detect the primary one
 	iface   string
 	checked time.Time
 	rates   RateTracker
@@ -158,6 +159,17 @@ func (n *Network) detect(counters map[string]IfCounters, order []string) {
 	n.checked = time.Now()
 }
 
+// forcedIface is the configured interface as the OS names it, or "" if none is configured
+// or it isn't present (then the primary interface is detected as usual).
+func (n *Network) forcedIface(present []string) string {
+	for _, name := range present {
+		if n.Iface != "" && strings.EqualFold(name, n.Iface) {
+			return name
+		}
+	}
+	return ""
+}
+
 func (n *Network) Collect(out *frame.Obj) error {
 	stats, err := psnet.IOCounters(true)
 	if err != nil {
@@ -169,7 +181,12 @@ func (n *Network) Collect(out *frame.Obj) error {
 		counters[s.Name] = IfCounters{Rx: s.BytesRecv, Tx: s.BytesSent}
 		order = append(order, s.Name)
 	}
-	if _, ok := counters[n.iface]; !ok || time.Since(n.checked) > redetectEvery {
+	if forced := n.forcedIface(order); forced != "" {
+		if n.iface != forced {
+			n.iface = forced
+			n.rates.Reset()
+		}
+	} else if _, ok := counters[n.iface]; !ok || time.Since(n.checked) > redetectEvery {
 		n.detect(counters, order)
 	}
 	if n.iface == "" {

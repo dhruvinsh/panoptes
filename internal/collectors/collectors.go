@@ -7,6 +7,7 @@ package collectors
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -25,9 +26,40 @@ type Collector interface {
 // MaxTemps caps the temps list.
 const MaxTemps = 6
 
+// Options are the user-tunable parts of the collector set (the config file's
+// disable, net_interface and mounts).
+type Options struct {
+	Disable  []string // metric groups to leave out: gpu, temps, fans, battery, procs, disk, net
+	NetIface string   // graph this interface instead of detecting the primary one
+	Mounts   []string // show exactly these mount points instead of picking filesystems
+}
+
+// groupCollectors maps a Disable group to the collectors (by Name) it switches off.
+var groupCollectors = map[string][]string{
+	"gpu":     {"gpu"},
+	"temps":   {"temps"},
+	"fans":    {"fans"},
+	"battery": {"bat"},
+	"procs":   {"procs"},
+	"disk":    {"disk.io", "disk.mounts"},
+	"net":     {"net"},
+}
+
+func (o Options) disabled(group string) bool {
+	for _, g := range o.Disable {
+		if g == group {
+			return true
+		}
+	}
+	return false
+}
+
 // Defaults returns the standard collector set, in frame order.
-func Defaults() []Collector {
-	return []Collector{
+func Defaults() []Collector { return DefaultsWith(Options{}) }
+
+// DefaultsWith returns the standard collector set minus the groups o disables.
+func DefaultsWith(o Options) []Collector {
+	all := []Collector{
 		&SystemInfo{},
 		&CPUUsage{},
 		&CPUFreq{},
@@ -35,26 +67,47 @@ func Defaults() []Collector {
 		&CPUName{},
 		&Memory{},
 		&Swap{},
-		&Network{},
+		&Network{Iface: o.NetIface},
 		&DiskIO{},
-		&DiskMounts{},
+		&DiskMounts{Only: normalizeMounts(o.Mounts, runtime.GOOS)},
 		&Temperatures{},
 		&Fans{},
 		&Battery{},
 		NewGPU(),
 		&TopProcesses{},
 	}
+	off := map[string]bool{}
+	for group, names := range groupCollectors {
+		if o.disabled(group) {
+			for _, n := range names {
+				off[n] = true
+			}
+		}
+	}
+	out := all[:0]
+	for _, c := range all {
+		if !off[c.Name()] {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // StatsSource runs all collectors and assembles one `s` frame.
 type StatsSource struct {
 	Collectors []Collector
+	noTemps    bool // `temps` is disabled: don't let Finalize surface the GPU temperature
 	mu         sync.Mutex
 	failed     map[string]bool
 }
 
 // NewSource returns a source using the default collectors.
-func NewSource() *StatsSource { return &StatsSource{Collectors: Defaults()} }
+func NewSource() *StatsSource { return NewSourceWith(Options{}) }
+
+// NewSourceWith returns a source using the collectors o leaves enabled.
+func NewSourceWith(o Options) *StatsSource {
+	return &StatsSource{Collectors: DefaultsWith(o), noTemps: o.disabled("temps")}
+}
 
 func (s *StatsSource) fail(c Collector, phase string, err error) {
 	s.mu.Lock()
@@ -97,7 +150,11 @@ func (s *StatsSource) Collect() *frame.Obj {
 		}
 		frame.Merge(f, part)
 	}
-	Finalize(f)
+	if s.noTemps {
+		f.Delete("temps")
+	} else {
+		Finalize(f)
+	}
 	return f
 }
 

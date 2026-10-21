@@ -223,6 +223,18 @@ void parseCfg(JsonObjectConst o) {
     st.led = o["led"].as<bool>();
     mask |= CFG_LED;
   }
+  if (!isnan(f = numClamp(o["led_bright"], 0, 255))) {
+    st.ledBright = (uint8_t)f;
+    mask |= CFG_LED;
+  }
+  if (!isnan(f = numClamp(o["auto_bright_min"], 0, 255))) {
+    st.blMin = (uint8_t)f;
+    mask |= CFG_BRIGHT;
+  }
+  if (!isnan(f = numClamp(o["night_bright"], 0, 255))) {
+    st.blNight = (uint8_t)f;
+    mask |= CFG_BRIGHT;
+  }
   if (o["beep"].is<bool>()) {
     st.beep = o["beep"].as<bool>();
     mask |= CFG_OTHER;

@@ -57,7 +57,10 @@ All fields optional. Units are in the key comments.
  "theme":"nord","theme_mode":"auto"}
 ```
 - `bright` 0–255 backlight; `auto_bright` use the onboard LDR.
-- `led` RGB status LED on/off; `beep` speaker alerts on/off.
+- `auto_bright_min` 0–255, the lowest level auto-brightness goes to (default 18);
+  `night_bright` 0–255, the backlight level in night mode (default 4).
+- `led` RGB status LED on/off; `led_bright` 0–255, its maximum brightness (default 90).
+- `beep` speaker alerts on/off.
 - `rotate` 0/1 → landscape / landscape-flipped.
 - `page` force page index (-1 = leave alone); `cycle` auto-advance seconds (0 = off).
 - `alert_temp` °C, `alert_cpu` % thresholds for alert mode.
@@ -66,7 +69,8 @@ All fields optional. Units are in the key comments.
 - `theme_mode` `"dark"` | `"light"` | `"auto"`. `auto` picks the variant from the onboard
   light sensor (with hysteresis and a 20 s dwell, so it never flaps).
 
-Like the other settings, `theme` and `theme_mode` are stored in flash and survive a reboot.
+Like the other settings, `theme`, `theme_mode` and the brightness values are stored in flash and
+survive a reboot.
 
 ## Device → Host
 

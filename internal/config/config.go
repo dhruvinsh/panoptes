@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -21,44 +22,52 @@ import (
 // AppName is used for the config directory, log file and service names.
 const AppName = "panoptes"
 
-// RunKeys are agent options accepted in config.toml.
-var RunKeys = []string{"port", "baud", "interval", "verbose", "log_file"}
-
-// CfgKeys are device options, sent to the board in a `cfg` message (in this order).
-var CfgKeys = []string{"bright", "auto_bright", "led", "beep", "rotate", "page", "cycle",
-	"alert_temp", "alert_cpu", "theme", "theme_mode"}
-
-// Themes and ThemeModes the firmware knows (cfg.theme / cfg.theme_mode).
-var (
-	Themes     = []string{"default", "gruvbox", "catppuccin", "solarized", "nord", "dracula", "tokyonight"}
-	ThemeModes = []string{"dark", "light", "auto"}
-)
-
-// Defaults for the run options.
-const (
-	DefaultBaud     = 115200
-	DefaultInterval = 1.0
-)
-
 // Values maps option keys (underscore form) to their values.
 type Values map[string]any
 
-// Dir is the per-user config directory: os.UserConfigDir()/panoptes
-// (~/.config/panoptes, ~/Library/Application Support/panoptes, %AppData%\panoptes).
+// Dir is the per-user config directory.
+//
+//	$XDG_CONFIG_HOME/panoptes                 if XDG_CONFIG_HOME is set (any OS)
+//	~/.config/panoptes                        Linux; on macOS and Windows when that directory exists
+//	~/Library/Application Support/panoptes    macOS
+//	%AppData%\panoptes                        Windows
 func Dir() string {
-	base, err := os.UserConfigDir()
-	if err != nil || base == "" {
-		home, _ := os.UserHomeDir()
-		base = filepath.Join(home, ".config")
+	home, _ := os.UserHomeDir()
+	return dirFor(runtime.GOOS, os.Getenv, home, func(p string) bool {
+		st, err := os.Stat(p)
+		return err == nil && st.IsDir()
+	})
+}
+
+func dirFor(goos string, env func(string) string, home string, isDir func(string) bool) string {
+	if x := env("XDG_CONFIG_HOME"); filepath.IsAbs(x) { // the XDG spec says to ignore relative values
+		return filepath.Join(x, AppName)
 	}
-	return filepath.Join(base, AppName)
+	xdg := filepath.Join(home, ".config", AppName)
+	switch goos {
+	case "darwin":
+		if isDir(xdg) {
+			return xdg
+		}
+		return filepath.Join(home, "Library", "Application Support", AppName)
+	case "windows":
+		if isDir(xdg) {
+			return xdg
+		}
+		if appData := env("AppData"); appData != "" {
+			return filepath.Join(appData, AppName)
+		}
+		return filepath.Join(home, "AppData", "Roaming", AppName)
+	}
+	return xdg
 }
 
 // DefaultPath is Dir()/config.toml.
 func DefaultPath() string { return filepath.Join(Dir(), "config.toml") }
 
 func isKnown(k string) bool {
-	return contains(RunKeys, k) || contains(CfgKeys, k)
+	_, ok := Lookup(k)
+	return ok
 }
 
 func contains(list []string, s string) bool {
@@ -70,7 +79,7 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-// Load reads a TOML config file. Unknown keys are ignored; "-" and "_" are equivalent;
+// Load reads a TOML config file. Unknown keys are reported and ignored; "-" and "_" are equivalent;
 // keys may be top level or inside a [panoptes] table. A missing default file is silent,
 // a missing explicit file logs a warning. Errors never abort the agent.
 func Load(path string, explicit bool) Values {
@@ -107,7 +116,7 @@ func Parse(text, path string) Values {
 		if isKnown(key) {
 			out[key] = v
 		} else {
-			logx.Debugf("ignoring unknown config key %q in %s", k, path)
+			logx.Warnf("ignoring unknown config key %q in %s", k, path)
 		}
 	}
 	logx.Debugf("loaded config %s: %v", path, map[string]any(out))
@@ -168,6 +177,28 @@ func (v Values) Float(k string, def float64) float64 {
 		logx.Warnf("ignoring %s = %v (expected a number)", k, v[k])
 	}
 	return def
+}
+
+// Strings returns a list option (nil if unset or not a list of strings).
+func (v Values) Strings(k string) []string {
+	if v[k] == nil {
+		return nil
+	}
+	list, ok := v[k].([]any)
+	if !ok {
+		logx.Warnf("ignoring %s = %v (expected a list of strings)", k, v[k])
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, e := range list {
+		s, ok := e.(string)
+		if !ok {
+			logx.Warnf("ignoring %s = %v (expected a list of strings)", k, v[k])
+			return nil
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 func toInt(v any) (int, bool) {
@@ -235,7 +266,7 @@ func CfgMessage(opts Values) *frame.Obj {
 			continue
 		}
 		switch k {
-		case "bright", "rotate", "page", "cycle":
+		case "bright", "auto_bright_min", "night_bright", "led_bright", "rotate", "page", "cycle":
 			n, ok := toInt(v)
 			if !ok {
 				logx.Warnf("ignoring %s = %v (expected an integer)", k, v)

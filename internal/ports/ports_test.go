@@ -184,3 +184,19 @@ func TestParseIoreg(t *testing.T) {
 		t.Fatalf("rank: %v", ranked)
 	}
 }
+
+func TestPreferUSBIDs(t *testing.T) {
+	saved := KnownUSBIDs
+	defer func() { KnownUSBIDs = saved }()
+	bad := PreferUSBIDs([]string{"0403:6001", "nope", "1a86:7523", "12345:1", " 0403:6001"})
+	if len(bad) != 2 || bad[0] != "nope" || bad[1] != "12345:1" {
+		t.Fatalf("bad = %v", bad)
+	}
+	if len(KnownUSBIDs) != len(saved)+1 || KnownUSBIDs[0].VID != 0x0403 || KnownUSBIDs[0].PID != 0x6001 {
+		t.Fatalf("configured IDs go first, without duplicates: %v", KnownUSBIDs)
+	}
+	ranked := Rank([]Port{{Device: "a", VID: 0x1A86, PID: 0x7523}, {Device: "b", VID: 0x0403, PID: 0x6001}}, "linux")
+	if len(ranked) != 2 || ranked[0].Device != "b" {
+		t.Fatalf("configured bridge should rank first: %v", ranked)
+	}
+}

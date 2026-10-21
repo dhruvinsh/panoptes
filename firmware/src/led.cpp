@@ -17,7 +17,7 @@ uint32_t lastMs = 0;
 
 void write(int pin, float v) {
   v = v < 0 ? 0 : (v > 1 ? 1 : v);
-  uint32_t duty = (uint32_t)lroundf(v * LED_MAX_DUTY);
+  uint32_t duty = (uint32_t)lroundf(v * settings.ledBright);
   ledcWrite(pin, 255 - duty);  // active LOW
 }
 

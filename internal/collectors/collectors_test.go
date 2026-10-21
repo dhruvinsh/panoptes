@@ -321,3 +321,76 @@ func TestRateTracker(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+func collectorNames(cs []Collector) []string {
+	var out []string
+	for _, c := range cs {
+		out = append(out, c.Name())
+	}
+	return out
+}
+
+func TestDisableGroups(t *testing.T) {
+	all := collectorNames(DefaultsWith(Options{}))
+	if !reflect.DeepEqual(all, collectorNames(Defaults())) {
+		t.Fatal("no options must equal Defaults()")
+	}
+	got := collectorNames(DefaultsWith(Options{Disable: []string{"gpu", "disk", "procs", "battery"}}))
+	for _, gone := range []string{"gpu", "disk.io", "disk.mounts", "procs", "bat"} {
+		for _, n := range got {
+			if n == gone {
+				t.Errorf("%s should be disabled: %v", gone, got)
+			}
+		}
+	}
+	if len(got) != len(all)-5 {
+		t.Errorf("only the disabled collectors should go: %v", got)
+	}
+}
+
+func TestDisableTempsDropsGPUTemp(t *testing.T) {
+	src := &StatsSource{Collectors: []Collector{gpuTemp{}}, noTemps: true}
+	if src.Collect().Has("temps") {
+		t.Fatal("temps must not be surfaced when disabled")
+	}
+	src.noTemps = false
+	if !src.Collect().Has("temps") {
+		t.Fatal("control: temps is surfaced from the GPU temperature")
+	}
+}
+
+type gpuTemp struct{ noPrime }
+
+func (gpuTemp) Name() string { return "gpu" }
+func (gpuTemp) Collect(out *frame.Obj) error {
+	out.Set("gpu", frame.New("name", "X", "temp", 50))
+	return nil
+}
+
+func TestNormalizeMounts(t *testing.T) {
+	if got := normalizeMounts([]string{" /home ", "", "/"}, "linux"); !reflect.DeepEqual(got, []string{"/home", "/"}) {
+		t.Fatalf("got %v", got)
+	}
+	if got := normalizeMounts([]string{"C:", `D:\`, "e:"}, "windows"); !reflect.DeepEqual(got, []string{`C:\`, `D:\`, `e:\`}) {
+		t.Fatalf("got %v", got)
+	}
+	if got := normalizeMounts([]string{"/a", "/b", "/c", "/d", "/e"}, "linux"); len(got) != MaxMounts {
+		t.Fatalf("not capped: %v", got)
+	}
+	if normalizeMounts(nil, "linux") != nil {
+		t.Fatal("nil must stay nil: it means auto-select")
+	}
+}
+
+func TestForcedIface(t *testing.T) {
+	n := &Network{Iface: "WI-FI"}
+	if got := n.forcedIface([]string{"lo", "Wi-Fi"}); got != "Wi-Fi" {
+		t.Fatalf("got %q", got)
+	}
+	if got := n.forcedIface([]string{"lo", "eth0"}); got != "" {
+		t.Fatalf("a missing interface must fall back to detection, got %q", got)
+	}
+	if got := (&Network{}).forcedIface([]string{"lo"}); got != "" {
+		t.Fatalf("got %q", got)
+	}
+}

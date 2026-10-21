@@ -184,7 +184,7 @@ of about 1 s). On most boards the reading goes **up** as the room gets darker.
 The System page shows the live `LDR raw` value. Read it in your brightest and
 darkest conditions and put those numbers into `LDR_RAW_BRIGHT` and
 `LDR_RAW_DARK`. Swap them if your board reads the other way round.
-Auto-brightness never drops below `BL_AUTO_FLOOR`. The System page also
+Auto-brightness never drops below `BL_AUTO_FLOOR` (default 18; `cfg.auto_bright_min` changes it, as `cfg.night_bright` does `BL_NIGHT` and `cfg.led_bright` does `LED_MAX_DUTY`). The System page also
 shows the resulting 0..1 level, which `theme_mode: "auto"` uses too.
 
 ## Code layout

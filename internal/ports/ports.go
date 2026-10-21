@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -35,6 +36,43 @@ var KnownUSBIDs = []struct {
 	{0x1A86, 0x7523, "CH340"},
 	{0x1A86, 0x55D4, "CH9102"},
 	{0x10C4, 0xEA60, "CP210x"},
+}
+
+// PreferUSBIDs puts "vid:pid" pairs (hex, e.g. "0403:6001") ahead of the built-in
+// bridges, so boards with another USB-serial chip are found automatically. It returns
+// the entries it could not parse. Meant to be called once at startup.
+func PreferUSBIDs(ids []string) (bad []string) {
+	var extra []struct {
+		VID, PID int
+		Label    string
+	}
+	for _, id := range ids {
+		vid, pid, ok := strings.Cut(strings.TrimSpace(id), ":")
+		v, err1 := strconv.ParseUint(vid, 16, 16)
+		p, err2 := strconv.ParseUint(pid, 16, 16)
+		if !ok || err1 != nil || err2 != nil {
+			bad = append(bad, id)
+			continue
+		}
+		dup := false
+		for _, list := range [][]struct {
+			VID, PID int
+			Label    string
+		}{extra, KnownUSBIDs} {
+			for _, k := range list {
+				dup = dup || k.VID == int(v) && k.PID == int(p)
+			}
+		}
+		if dup {
+			continue
+		}
+		extra = append(extra, struct {
+			VID, PID int
+			Label    string
+		}{int(v), int(p), "configured"})
+	}
+	KnownUSBIDs = append(extra, KnownUSBIDs...)
+	return bad
 }
 
 // Weak fallback on description/device name when VID/PID is unavailable

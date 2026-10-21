@@ -1,0 +1,384 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/dhruvinsh/panoptes/main/schema/config.schema.json",
+  "title": "Panoptes config",
+  "description": "Config file for the panoptes host agent (config.toml). Command-line options override it.",
+  "type": "object",
+  "properties": {
+    "port": {
+      "type": "string",
+      "description": "Serial port of the board, e.g. /dev/ttyUSB0 or COM5. Default: auto-detect."
+    },
+    "baud": {
+      "type": "integer",
+      "description": "Serial baud rate. The firmware speaks 115200.",
+      "default": 115200,
+      "minimum": 1
+    },
+    "interval": {
+      "type": "number",
+      "description": "Seconds between stats frames.",
+      "default": 1,
+      "exclusiveMinimum": 0
+    },
+    "verbose": {
+      "type": "boolean",
+      "description": "Debug logging (device boot messages, frame sizes).",
+      "default": false
+    },
+    "log_file": {
+      "type": "string",
+      "description": "Also write the log to this file."
+    },
+    "bright": {
+      "type": "integer",
+      "description": "Backlight level, 0-255. Used when auto_bright is off.",
+      "default": 200,
+      "minimum": 0,
+      "maximum": 255
+    },
+    "auto_bright": {
+      "type": "boolean",
+      "description": "Set the backlight from the board's light sensor.",
+      "default": true
+    },
+    "auto_bright_min": {
+      "type": "integer",
+      "description": "Lowest backlight level auto_bright will go to in a dark room, 0-255.",
+      "default": 18,
+      "minimum": 0,
+      "maximum": 255
+    },
+    "night_bright": {
+      "type": "integer",
+      "description": "Backlight level while night mode is on (long-press the screen to toggle it), 0-255.",
+      "default": 4,
+      "minimum": 0,
+      "maximum": 255
+    },
+    "led": {
+      "type": "boolean",
+      "description": "RGB status LED that follows CPU load.",
+      "default": true
+    },
+    "led_bright": {
+      "type": "integer",
+      "description": "Maximum brightness of the status LED, 0-255. The LED is very bright; the default keeps it subtle.",
+      "default": 90,
+      "minimum": 0,
+      "maximum": 255
+    },
+    "beep": {
+      "type": "boolean",
+      "description": "Speaker beep when an alert fires.",
+      "default": false
+    },
+    "rotate": {
+      "type": "integer",
+      "description": "0 = landscape, 1 = landscape flipped.",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 1
+    },
+    "page": {
+      "type": "integer",
+      "description": "Force this page (0 dashboard, 1 CPU, 2 network, 3 sensors, 4 system). -1 leaves the board alone.",
+      "minimum": -1,
+      "maximum": 4
+    },
+    "cycle": {
+      "type": "integer",
+      "description": "Advance to the next page every N seconds. 0 = off.",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 3600
+    },
+    "alert_temp": {
+      "type": "number",
+      "description": "CPU temperature in °C above which the alert banner shows.",
+      "default": 90,
+      "minimum": 0,
+      "maximum": 150
+    },
+    "alert_cpu": {
+      "type": "number",
+      "description": "CPU load in % above which the alert banner shows.",
+      "default": 95,
+      "minimum": 0,
+      "maximum": 100
+    },
+    "theme": {
+      "type": "string",
+      "description": "Colour theme. Each has a dark and a light variant; theme_mode picks which one shows.",
+      "default": "default",
+      "enum": [
+        "default",
+        "gruvbox",
+        "catppuccin",
+        "solarized",
+        "nord",
+        "dracula",
+        "tokyonight"
+      ]
+    },
+    "theme_mode": {
+      "type": "string",
+      "description": "Which variant of the theme to show. auto follows the room light (the board's light sensor).",
+      "default": "dark",
+      "enum": [
+        "dark",
+        "light",
+        "auto"
+      ]
+    },
+    "hello_interval": {
+      "type": "number",
+      "description": "Seconds between `hello` messages while waiting for the board to answer.",
+      "default": 2,
+      "exclusiveMinimum": 0
+    },
+    "reconnect_interval": {
+      "type": "number",
+      "description": "Seconds between attempts to find and open the board after an error or unplug.",
+      "default": 2,
+      "exclusiveMinimum": 0
+    },
+    "handshake_timeout": {
+      "type": "number",
+      "description": "Seconds to wait for `hi` before trying the next candidate port.",
+      "default": 10,
+      "exclusiveMinimum": 0
+    },
+    "net_interface": {
+      "type": "string",
+      "description": "Network interface to graph, e.g. enp5s0 or Wi-Fi. Default: the default-route interface."
+    },
+    "usb_ids": {
+      "type": "array",
+      "description": "Extra USB vendor:product IDs (hex, e.g. \"0403:6001\") to treat as the board when auto-detecting, for boards with a USB-serial chip other than CH340, CH9102 or CP210x. They are tried first.",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9a-fA-F]{4}:[0-9a-fA-F]{4}$"
+      },
+      "uniqueItems": true
+    },
+    "mounts": {
+      "type": "array",
+      "description": "Mount points (or Windows drive letters) to show on the disk widget, at most 4. Default: pick the real filesystems automatically.",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "maxItems": 4
+    },
+    "disable": {
+      "type": "array",
+      "description": "Metric groups not to collect or send; the board hides their widgets.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "gpu",
+          "temps",
+          "fans",
+          "battery",
+          "procs",
+          "disk",
+          "net"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "panoptes": {
+      "type": "object",
+      "description": "Legacy wrapper table: the same keys as the top level.",
+      "deprecated": true,
+      "properties": {
+        "port": {
+          "type": "string",
+          "description": "Serial port of the board, e.g. /dev/ttyUSB0 or COM5. Default: auto-detect."
+        },
+        "baud": {
+          "type": "integer",
+          "description": "Serial baud rate. The firmware speaks 115200.",
+          "default": 115200,
+          "minimum": 1
+        },
+        "interval": {
+          "type": "number",
+          "description": "Seconds between stats frames.",
+          "default": 1,
+          "exclusiveMinimum": 0
+        },
+        "verbose": {
+          "type": "boolean",
+          "description": "Debug logging (device boot messages, frame sizes).",
+          "default": false
+        },
+        "log_file": {
+          "type": "string",
+          "description": "Also write the log to this file."
+        },
+        "bright": {
+          "type": "integer",
+          "description": "Backlight level, 0-255. Used when auto_bright is off.",
+          "default": 200,
+          "minimum": 0,
+          "maximum": 255
+        },
+        "auto_bright": {
+          "type": "boolean",
+          "description": "Set the backlight from the board's light sensor.",
+          "default": true
+        },
+        "auto_bright_min": {
+          "type": "integer",
+          "description": "Lowest backlight level auto_bright will go to in a dark room, 0-255.",
+          "default": 18,
+          "minimum": 0,
+          "maximum": 255
+        },
+        "night_bright": {
+          "type": "integer",
+          "description": "Backlight level while night mode is on (long-press the screen to toggle it), 0-255.",
+          "default": 4,
+          "minimum": 0,
+          "maximum": 255
+        },
+        "led": {
+          "type": "boolean",
+          "description": "RGB status LED that follows CPU load.",
+          "default": true
+        },
+        "led_bright": {
+          "type": "integer",
+          "description": "Maximum brightness of the status LED, 0-255. The LED is very bright; the default keeps it subtle.",
+          "default": 90,
+          "minimum": 0,
+          "maximum": 255
+        },
+        "beep": {
+          "type": "boolean",
+          "description": "Speaker beep when an alert fires.",
+          "default": false
+        },
+        "rotate": {
+          "type": "integer",
+          "description": "0 = landscape, 1 = landscape flipped.",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "page": {
+          "type": "integer",
+          "description": "Force this page (0 dashboard, 1 CPU, 2 network, 3 sensors, 4 system). -1 leaves the board alone.",
+          "minimum": -1,
+          "maximum": 4
+        },
+        "cycle": {
+          "type": "integer",
+          "description": "Advance to the next page every N seconds. 0 = off.",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 3600
+        },
+        "alert_temp": {
+          "type": "number",
+          "description": "CPU temperature in °C above which the alert banner shows.",
+          "default": 90,
+          "minimum": 0,
+          "maximum": 150
+        },
+        "alert_cpu": {
+          "type": "number",
+          "description": "CPU load in % above which the alert banner shows.",
+          "default": 95,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "theme": {
+          "type": "string",
+          "description": "Colour theme. Each has a dark and a light variant; theme_mode picks which one shows.",
+          "default": "default",
+          "enum": [
+            "default",
+            "gruvbox",
+            "catppuccin",
+            "solarized",
+            "nord",
+            "dracula",
+            "tokyonight"
+          ]
+        },
+        "theme_mode": {
+          "type": "string",
+          "description": "Which variant of the theme to show. auto follows the room light (the board's light sensor).",
+          "default": "dark",
+          "enum": [
+            "dark",
+            "light",
+            "auto"
+          ]
+        },
+        "hello_interval": {
+          "type": "number",
+          "description": "Seconds between `hello` messages while waiting for the board to answer.",
+          "default": 2,
+          "exclusiveMinimum": 0
+        },
+        "reconnect_interval": {
+          "type": "number",
+          "description": "Seconds between attempts to find and open the board after an error or unplug.",
+          "default": 2,
+          "exclusiveMinimum": 0
+        },
+        "handshake_timeout": {
+          "type": "number",
+          "description": "Seconds to wait for `hi` before trying the next candidate port.",
+          "default": 10,
+          "exclusiveMinimum": 0
+        },
+        "net_interface": {
+          "type": "string",
+          "description": "Network interface to graph, e.g. enp5s0 or Wi-Fi. Default: the default-route interface."
+        },
+        "usb_ids": {
+          "type": "array",
+          "description": "Extra USB vendor:product IDs (hex, e.g. \"0403:6001\") to treat as the board when auto-detecting, for boards with a USB-serial chip other than CH340, CH9102 or CP210x. They are tried first.",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{4}:[0-9a-fA-F]{4}$"
+          },
+          "uniqueItems": true
+        },
+        "mounts": {
+          "type": "array",
+          "description": "Mount points (or Windows drive letters) to show on the disk widget, at most 4. Default: pick the real filesystems automatically.",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "maxItems": 4
+        },
+        "disable": {
+          "type": "array",
+          "description": "Metric groups not to collect or send; the board hides their widgets.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "gpu",
+              "temps",
+              "fans",
+              "battery",
+              "procs",
+              "disk",
+              "net"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

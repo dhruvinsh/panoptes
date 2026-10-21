@@ -95,6 +95,9 @@ func newFlagSet(p *Parsed, bools map[string]**bool) *pflag.FlagSet {
 	fs.BoolVarP(&p.Help, "help", "h", false, "show this help")
 
 	fs.Int("bright", 0, "backlight 0-255")
+	fs.Int("auto-bright-min", 0, "lowest backlight auto-brightness uses, 0-255")
+	fs.Int("night-bright", 0, "backlight in night mode, 0-255")
+	fs.Int("led-bright", 0, "maximum status LED brightness, 0-255")
 	for _, name := range []string{"auto-bright", "led", "beep"} {
 		help := map[string]string{"auto-bright": "use the onboard light sensor", "led": "RGB status LED", "beep": "speaker alerts"}[name]
 		var v *bool
@@ -157,7 +160,7 @@ func Parse(args []string) (*Parsed, error) {
 		switch key {
 		case "port", "log_file", "theme", "theme_mode":
 			p.Values[key] = str(name)
-		case "baud", "bright", "rotate", "page", "cycle":
+		case "baud", "bright", "auto_bright_min", "night_bright", "led_bright", "rotate", "page", "cycle":
 			p.Values[key] = integer(name)
 		case "interval", "alert_temp", "alert_cpu":
 			p.Values[key] = float(name)
@@ -170,8 +173,10 @@ func Parse(args []string) (*Parsed, error) {
 	if v, ok := p.Values["interval"].(float64); ok && !(v > 0) {
 		return nil, usageError{"argument -i/--interval: must be > 0"}
 	}
-	if v, ok := p.Values["bright"].(int); ok && (v < 0 || v > 255) {
-		return nil, usageError{"argument --bright: must be 0-255"}
+	for _, key := range []string{"bright", "auto_bright_min", "night_bright", "led_bright"} {
+		if v, ok := p.Values[key].(int); ok && (v < 0 || v > 255) {
+			return nil, usageError{"argument --" + strings.ReplaceAll(key, "_", "-") + ": must be 0-255"}
+		}
 	}
 	if v, ok := p.Values["rotate"].(int); ok && v != 0 && v != 1 {
 		return nil, usageError{fmt.Sprintf("argument --rotate: invalid choice: %d (choose from 0, 1)", v)}
@@ -259,7 +264,8 @@ func Usage(w io.Writer) {
 		"  screenshot          save the board's screen as a PNG (-o FILE)\n\n"+
 		"options:\n%s\n"+
 		"Device options (--bright ... --theme-mode) are sent as a `cfg` message after every handshake.\n"+
-		"Config file: %s (CLI options override it).\n", fs.FlagUsages(), config.DefaultPath())
+		"Config file: %s (CLI options override it). It also takes options that have no flag;\n"+
+		"schema for editors: %s%s\n", fs.FlagUsages(), config.DefaultPath(), config.SchemaBaseURL, config.ConfigSchemaFile)
 }
 
 // Main runs the CLI and returns the exit code.
@@ -293,6 +299,11 @@ func Main(version string, args []string, stdout, stderr io.Writer) int {
 		logx.Warnf("cannot open log file %s: %v", opts.String("log_file"), err)
 	}
 
+	applyTimings(opts)
+	if bad := ports.PreferUSBIDs(opts.Strings("usb_ids")); len(bad) > 0 {
+		logx.Warnf("ignoring usb_ids %q (expected vid:pid in hex, e.g. 0403:6001)", bad)
+	}
+
 	if p.List {
 		return ports.PrintList(stdout)
 	}
@@ -317,7 +328,7 @@ func Main(version string, args []string, stdout, stderr io.Writer) int {
 	if p.Demo {
 		src = demo.New()
 	} else {
-		src = collectors.NewSource()
+		src = collectors.NewSourceWith(collectorOptions(opts))
 	}
 	cfg := config.CfgMessage(opts)
 	interval := opts.Float("interval", config.DefaultInterval)
@@ -337,6 +348,37 @@ func Main(version string, args []string, stdout, stderr io.Writer) int {
 		logx.Infof("interrupted, bye")
 	}
 	return code
+}
+
+// collectorOptions reads the config-file-only collector options.
+func collectorOptions(opts config.Values) collectors.Options {
+	o := collectors.Options{NetIface: opts.String("net_interface"), Mounts: opts.Strings("mounts")}
+	for _, g := range opts.Strings("disable") {
+		g = strings.ToLower(g)
+		if contains(config.DisableGroups, g) {
+			o.Disable = append(o.Disable, g)
+		} else {
+			logx.Warnf("ignoring disable = %q (expected one of: %s)", g, strings.Join(config.DisableGroups, ", "))
+		}
+	}
+	return o
+}
+
+// seconds reads a positive number of seconds option as a Duration.
+func seconds(opts config.Values, key string, def float64) time.Duration {
+	v := opts.Float(key, def)
+	if !(v > 0) {
+		logx.Warnf("ignoring %s = %v (must be > 0)", key, v)
+		v = def
+	}
+	return time.Duration(v * float64(time.Second))
+}
+
+// applyTimings sets the link timings from the config file.
+func applyTimings(opts config.Values) {
+	link.HelloInterval = seconds(opts, "hello_interval", config.DefaultHelloInterval)
+	link.ReconnectInterval = seconds(opts, "reconnect_interval", config.DefaultReconnectInterval)
+	link.HandshakeRotateAfter = seconds(opts, "handshake_timeout", config.DefaultHandshakeTimeout)
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) bool {
