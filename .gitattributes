@@ -1,0 +1,3 @@
+# The schema is served raw from GitHub, and a test compares it byte for byte.
+schema/*.json text eol=lf
+docs/config.example.toml text eol=lf

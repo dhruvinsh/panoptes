@@ -17,6 +17,7 @@ func TestDirFor(t *testing.T) {
 	never := func(string) bool { return false }
 	always := func(string) bool { return true }
 	j := filepath.Join
+	x := j(os.TempDir(), "x") // absolute on every OS ("/x" has no drive letter on Windows)
 	cases := []struct {
 		name  string
 		goos  string
@@ -25,11 +26,11 @@ func TestDirFor(t *testing.T) {
 		want  string
 	}{
 		{"linux default", "linux", nil, never, j("/h", ".config", "panoptes")},
-		{"linux xdg", "linux", map[string]string{"XDG_CONFIG_HOME": "/x"}, never, j("/x", "panoptes")},
+		{"linux xdg", "linux", map[string]string{"XDG_CONFIG_HOME": x}, never, j(x, "panoptes")},
 		{"relative xdg ignored", "linux", map[string]string{"XDG_CONFIG_HOME": "rel"}, never, j("/h", ".config", "panoptes")},
 		{"mac native", "darwin", nil, never, j("/h", "Library", "Application Support", "panoptes")},
 		{"mac existing ~/.config", "darwin", nil, always, j("/h", ".config", "panoptes")},
-		{"mac xdg", "darwin", map[string]string{"XDG_CONFIG_HOME": "/x"}, never, j("/x", "panoptes")},
+		{"mac xdg", "darwin", map[string]string{"XDG_CONFIG_HOME": x}, never, j(x, "panoptes")},
 		{"windows native", "windows", map[string]string{"AppData": `C:\Users\u\AppData\Roaming`}, never, j(`C:\Users\u\AppData\Roaming`, "panoptes")},
 		{"windows existing ~/.config", "windows", map[string]string{"AppData": "A"}, always, j("/h", ".config", "panoptes")},
 		{"windows no AppData", "windows", nil, never, j("/h", "AppData", "Roaming", "panoptes")},
@@ -114,7 +115,8 @@ func TestSchemaUpToDate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v (run with UPDATE_SCHEMA=1)", err)
 	}
-	if string(got) != string(want) {
+	// a Windows checkout may have converted the line endings
+	if strings.ReplaceAll(string(got), "\r\n", "\n") != string(want) {
 		t.Fatalf("%s is stale: run UPDATE_SCHEMA=1 go test ./internal/config -run Schema", path)
 	}
 }
