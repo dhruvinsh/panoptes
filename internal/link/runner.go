@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"go.bug.st/serial"
+
 	"github.com/dhruvinsh/panoptes/internal/frame"
 	"github.com/dhruvinsh/panoptes/internal/logx"
 	"github.com/dhruvinsh/panoptes/internal/ports"
@@ -17,6 +19,7 @@ var (
 	ReconnectInterval    = 2 * time.Second
 	HandshakeRotateAfter = 10 * time.Second // with several candidate ports, try the next one if no `hi`
 	pollInterval         = 50 * time.Millisecond
+	PauseCheckInterval   = 500 * time.Millisecond
 )
 
 // Source produces stats frames.
@@ -25,7 +28,10 @@ type Source interface {
 	Collect() *frame.Obj
 }
 
-var errHandshakeTimeout = errors.New("handshake timeout")
+var (
+	errHandshakeTimeout = errors.New("handshake timeout")
+	errPaused           = errors.New("paused")
+)
 
 // Runner is the reconnect loop.
 type Runner struct {
@@ -35,11 +41,42 @@ type Runner struct {
 	Interval   time.Duration
 	Cfg        *frame.Obj // sent after every `hi`; nil = none
 	Once       bool
-	Candidates func() []string // defaults to ports.Candidates
+	Candidates func() []string  // defaults to ports.Candidates
+	Paused     func() time.Time // end of a `panoptes pause`, zero when not paused; nil = never
 
 	rotate        int
 	waitingLogged bool
+	busyLogged    bool
 	exitCode      int
+}
+
+func (r *Runner) pausedUntil() time.Time {
+	if r.Paused == nil {
+		return time.Time{}
+	}
+	return r.Paused()
+}
+
+// waitPause blocks while paused (port closed). Returns false if not paused.
+func (r *Runner) waitPause(ctx context.Context) bool {
+	until := r.pausedUntil()
+	if until.IsZero() {
+		return false
+	}
+	logx.Infof("paused until %s, serial port released (`panoptes resume` to resume now)",
+		until.Local().Format("15:04:05"))
+	for ctx.Err() == nil && !r.pausedUntil().IsZero() {
+		sleepCtx(ctx, PauseCheckInterval)
+	}
+	if ctx.Err() == nil {
+		logx.Infof("resumed")
+	}
+	return true
+}
+
+func isBusy(err error) bool {
+	var pe *serial.PortError
+	return errors.As(err, &pe) && pe.Code() == serial.PortBusy
 }
 
 func (r *Runner) candidates() []string {
@@ -73,6 +110,9 @@ func sleepCtx(ctx context.Context, d time.Duration) {
 func (r *Runner) Run(ctx context.Context) int {
 	r.Source.Prime()
 	for ctx.Err() == nil {
+		if r.waitPause(ctx) {
+			continue
+		}
 		port := r.pickPort()
 		if port == "" {
 			if !r.waitingLogged {
@@ -89,6 +129,18 @@ func (r *Runner) Run(ctx context.Context) int {
 		if done {
 			return r.exitCode
 		}
+		if errors.Is(err, errPaused) {
+			continue
+		}
+		if isBusy(err) { // e.g. a flasher has it; expected, so say it once
+			if !r.busyLogged {
+				logx.Infof("%s is busy (another program has it open); waiting", port)
+				r.busyLogged = true
+			}
+			sleepCtx(ctx, ReconnectInterval)
+			continue
+		}
+		r.busyLogged = false
 		if errors.Is(err, errHandshakeTimeout) {
 			r.rotate++
 			logx.Infof("no reply on %s, trying next candidate port", port)
@@ -117,7 +169,8 @@ func (r *Runner) connect(ctx context.Context, dev *Device) (bool, error) {
 // session returns done=true when finished (--once or cancelled), or an error.
 func (r *Runner) session(ctx context.Context, dev *Device) (bool, error) {
 	opened := time.Now()
-	var lastHello time.Time
+	r.busyLogged = false
+	var lastHello, lastPauseCheck time.Time
 	var seenHi int64
 	nextFrame := time.Now()
 	multi := r.FixedPort == "" && len(r.candidates()) > 1
@@ -128,6 +181,12 @@ func (r *Runner) session(ctx context.Context, dev *Device) (bool, error) {
 			return false, err
 		}
 		now := time.Now()
+		if now.Sub(lastPauseCheck) >= PauseCheckInterval {
+			lastPauseCheck = now
+			if !r.pausedUntil().IsZero() {
+				return false, errPaused
+			}
+		}
 		if c := dev.HiCount(); c != seenHi { // first hi, or the device rebooted and said hi again
 			seenHi = c
 			if r.Cfg != nil {

@@ -77,6 +77,8 @@ panoptes --dry-run --once       # one frame, then exit
 panoptes --demo                 # synthetic, animated data (exercises every widget)
 panoptes -v                     # debug logging (device boot messages, frame sizes)
 panoptes screenshot -o shot.png # save what the display shows as a PNG (~25 s)
+panoptes pause                  # make the running agent release the port for 10 min (e.g. to flash)
+panoptes resume                 # take it back now
 ```
 
 All options: `panoptes --help`. Options and the subcommand may come in any order
@@ -233,6 +235,22 @@ resolved), so install the binary first. No root needed.
   agent. Without `conhost.exe` (pre-1809 Windows 10) the task runs `panoptes.exe` directly and a
   console window stays open.
 
+## Flashing while the agent runs
+
+The agent holds the serial port, so a flasher (the web flasher, esptool, `pio run -t upload`)
+can't open it. Instead of stopping the service:
+
+```sh
+panoptes pause        # release the port for 10 minutes; also 90s, 30m, 1h, or a number of minutes
+# ...flash the board...
+panoptes resume       # reconnect now instead of waiting for the pause to run out
+```
+
+`pause` writes the end time to a `pause` file in the config directory. A running agent checks for
+the file twice a second, closes the port and waits; `resume` deletes the file. While a flasher has
+the port, the agent logs `... is busy` once and keeps retrying, so it reconnects by itself after
+the pause even if you don't run `resume`.
+
 ## Serial port setup per OS
 
 ### Linux — Arch
@@ -317,7 +335,8 @@ the first 3, then per-core CPU values are dropped. A typical frame is ~1 KB.
   should see `device hi: ...`. If you only see `sent hello` and `device (non-JSON): ...` lines, the
   board is running different firmware or a different baud rate.
 - **Port busy:** another program (Arduino IDE serial monitor, `screen`, a second panoptes) has it
-  open. On Linux/macOS panoptes opens the port exclusively.
+  open. On Linux/macOS panoptes opens the port exclusively. To flash firmware while the agent (or
+  its service) is running, use `panoptes pause` ([above](#flashing-while-the-agent-runs)).
 - **No temperatures on Linux:** run `sensors` (lm_sensors); if it shows nothing, load the right
   hwmon driver (`sensors-detect`).
 - **No GPU:** NVIDIA needs `nvidia-smi` (ships with the driver). Intel and Apple GPUs aren't

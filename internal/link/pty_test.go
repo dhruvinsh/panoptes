@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/dhruvinsh/panoptes/internal/frame"
+	"github.com/dhruvinsh/panoptes/internal/logx"
 )
 
 type fakeSrc struct{}
@@ -141,5 +143,89 @@ loop:
 	}
 	if cfgCount < 2 {
 		t.Fatalf("cfg not re-sent after second hi: %v", types)
+	}
+}
+
+// TestPauseReleasesPort: a pause mid-stream closes the port (frames stop) and resuming
+// reconnects with a fresh hello.
+func TestPauseReleasesPort(t *testing.T) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Skipf("no pty: %v", err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	rawMode(t, master)
+	rawMode(t, slave)
+	port := slave.Name()
+
+	oldCheck := PauseCheckInterval
+	PauseCheckInterval = 20 * time.Millisecond
+	t.Cleanup(func() { PauseCheckInterval = oldCheck })
+	got := capture(t)
+	var mu sync.Mutex
+	var until time.Time
+	setPause := func(t time.Time) { mu.Lock(); until = t; mu.Unlock() }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r := &Runner{Source: fakeSrc{}, FixedPort: port, Baud: 115200, Interval: 50 * time.Millisecond,
+		Paused: func() time.Time { mu.Lock(); defer mu.Unlock(); return until }}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() { defer wg.Done(); r.Run(ctx) }()
+
+	types := make(chan string, 100)
+	go func() {
+		sc := bufio.NewScanner(master)
+		for sc.Scan() {
+			var m map[string]any
+			if json.Unmarshal(sc.Bytes(), &m) == nil {
+				types <- m["t"].(string)
+			}
+		}
+	}()
+	expect := func(want string) {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for {
+			select {
+			case ty := <-types:
+				if ty == "hello" {
+					_, _ = master.Write([]byte(`{"t":"hi","v":1}` + "\n"))
+				}
+				if ty == want {
+					return
+				}
+			case <-deadline:
+				t.Fatalf("no %q from the agent", want)
+			}
+		}
+	}
+
+	expect("s")
+	setPause(time.Now().Add(time.Hour))
+	time.Sleep(300 * time.Millisecond)
+	for len(types) > 0 { // drop what was sent before the pause took effect
+		<-types
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := len(types); n != 0 {
+		t.Fatalf("%d messages sent while paused", n)
+	}
+	setPause(time.Time{})
+	expect("hello")
+	expect("s")
+	cancel()
+	wg.Wait()
+
+	found := false
+	for _, rc := range *got {
+		if strings.HasPrefix(rc.msg, "paused until ") {
+			found = true
+		}
+	}
+	if !found || !has(*got, logx.INFO, "resumed") {
+		t.Fatalf("pause/resume not logged: %v", *got)
 	}
 }

@@ -140,7 +140,9 @@ If the upload doesn't start, hold **BOOT**, tap **RST**, then release
 **BOOT**.
 
 Note that the serial port is the protocol channel. Close `pio device monitor`
-before you start `panoptes`, because only one program can own the port. Opening
+before you start `panoptes`, because only one program can own the port. The same
+goes for `pio run -t upload` while the agent runs: `panoptes pause` frees the port,
+`panoptes resume` takes it back. Opening
 the port toggles DTR/RTS, which resets the board. The host tolerates this.
 
 ### Linux serial permissions

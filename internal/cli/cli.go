@@ -1,5 +1,5 @@
 // Package cli is the panoptes command line: flag parsing, option layering and the
-// run / dry-run / install-service / uninstall-service / screenshot commands.
+// run / dry-run / install-service / uninstall-service / screenshot / pause / resume commands.
 package cli
 
 import (
@@ -22,13 +22,14 @@ import (
 	"github.com/dhruvinsh/panoptes/internal/frame"
 	"github.com/dhruvinsh/panoptes/internal/link"
 	"github.com/dhruvinsh/panoptes/internal/logx"
+	"github.com/dhruvinsh/panoptes/internal/pause"
 	"github.com/dhruvinsh/panoptes/internal/ports"
 	"github.com/dhruvinsh/panoptes/internal/screenshot"
 	"github.com/dhruvinsh/panoptes/internal/service"
 )
 
 // Commands are the positional subcommands.
-var Commands = []string{"run", "install-service", "uninstall-service", "screenshot"}
+var Commands = []string{"run", "install-service", "uninstall-service", "screenshot", "pause", "resume"}
 
 const defaultShotFile = "panoptes-screenshot.png"
 
@@ -68,6 +69,7 @@ type Parsed struct {
 	Help    bool
 	Config  string // --config, "" if not given
 	Out     string
+	For     time.Duration // pause length (`panoptes pause 5m`)
 
 	order []string // CLI keys in canonical order, for Passthrough
 }
@@ -126,17 +128,27 @@ func Parse(args []string) (*Parsed, error) {
 	if err := fs.Parse(args); err != nil {
 		return nil, usageError{err.Error()}
 	}
-	switch pos := fs.Args(); len(pos) {
-	case 0:
-		p.Command = "run"
-	case 1:
-		p.Command = pos[0]
+	pos := fs.Args()
+	p.Command = "run"
+	if len(pos) > 0 {
+		p.Command, pos = pos[0], pos[1:]
 		if !contains(Commands, p.Command) {
 			return nil, usageError{fmt.Sprintf("argument command: invalid choice: %q (choose from %s)",
 				p.Command, strings.Join(Commands, ", "))}
 		}
-	default:
-		return nil, usageError{"unrecognized arguments: " + strings.Join(pos[1:], " ")}
+	}
+	if p.Command == "pause" {
+		p.For = pause.Default
+		if len(pos) > 0 {
+			d, err := parseDuration(pos[0])
+			if err != nil {
+				return nil, usageError{fmt.Sprintf("argument duration: %v", err)}
+			}
+			p.For, pos = d, pos[1:]
+		}
+	}
+	if len(pos) > 0 {
+		return nil, usageError{"unrecognized arguments: " + strings.Join(pos, " ")}
 	}
 	changed := func(name string) bool { return fs.Changed(name) }
 	str := func(name string) string { v, _ := fs.GetString(name); return v }
@@ -188,6 +200,22 @@ func Parse(args []string) (*Parsed, error) {
 		return nil, usageError{fmt.Sprintf("argument --theme-mode: invalid choice: %q (choose from %s)", v, strings.Join(config.ThemeModes, ", "))}
 	}
 	return p, nil
+}
+
+// parseDuration takes a Go duration ("90s", "5m", "1h30m") or a bare number of minutes.
+func parseDuration(s string) (time.Duration, error) {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		m, ferr := strconv.ParseFloat(s, 64)
+		if ferr != nil {
+			return 0, fmt.Errorf("invalid duration %q (e.g. 90s, 5m, 1h)", s)
+		}
+		d = time.Duration(m * float64(time.Minute))
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("duration must be > 0, got %q", s)
+	}
+	return d, nil
 }
 
 func contains(l []string, s string) bool {
@@ -261,7 +289,10 @@ func Usage(w io.Writer) {
 		"  run                 stream stats to the board (default)\n"+
 		"  install-service     start at login (systemd --user / launchd / Task Scheduler); options are baked in\n"+
 		"  uninstall-service   remove that service\n"+
-		"  screenshot          save the board's screen as a PNG (-o FILE)\n\n"+
+		"  screenshot          save the board's screen as a PNG (-o FILE)\n"+
+		"  pause [DURATION]    make the running agent release the serial port, e.g. to flash\n"+
+		"                      firmware (default 10m; 90s, 5m, 1h or minutes)\n"+
+		"  resume              end a pause early\n\n"+
 		"options:\n%s\n"+
 		"Device options (--bright ... --theme-mode) are sent as a `cfg` message after every handshake.\n"+
 		"Config file: %s (CLI options override it). It also takes options that have no flag;\n"+
@@ -312,6 +343,10 @@ func Main(version string, args []string, stdout, stderr io.Writer) int {
 		return service.Install(p.Passthrough())
 	case "uninstall-service":
 		return service.Uninstall()
+	case "pause":
+		return runPause(stdout, stderr, p.For)
+	case "resume":
+		return runResume(stdout, stderr)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -342,12 +377,32 @@ func Main(version string, args []string, stdout, stderr io.Writer) int {
 	}
 	logx.Infof("%s starting (interval %.1fs)", link.Agent, interval)
 	r := &link.Runner{Source: src, FixedPort: opts.String("port"), Baud: baud,
-		Interval: time.Duration(interval * float64(time.Second)), Cfg: cfg, Once: p.Once}
+		Interval: time.Duration(interval * float64(time.Second)), Cfg: cfg, Once: p.Once, Paused: pause.Until}
 	code := r.Run(ctx)
 	if ctx.Err() != nil {
 		logx.Infof("interrupted, bye")
 	}
 	return code
+}
+
+func runPause(stdout, stderr io.Writer, d time.Duration) int {
+	until := time.Now().Add(d)
+	if err := pause.Set(until); err != nil {
+		fmt.Fprintf(stderr, "panoptes: cannot write %s: %v\n", pause.Path(), err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "Paused until %s: a running agent releases the serial port within a second.\n"+
+		"Run `panoptes resume` when you're done.\n", until.Format("15:04:05"))
+	return 0
+}
+
+func runResume(stdout, stderr io.Writer) int {
+	if err := pause.Clear(); err != nil {
+		fmt.Fprintf(stderr, "panoptes: cannot remove %s: %v\n", pause.Path(), err)
+		return 1
+	}
+	fmt.Fprintln(stdout, "Resumed.")
+	return 0
 }
 
 // collectorOptions reads the config-file-only collector options.

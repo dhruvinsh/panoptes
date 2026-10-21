@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Panoptes Flasher</title>
-  <script type="module" src="https://unpkg.com/esp-web-tools@10.1.0/dist/web/install-button.js?module"></script>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
   <style>
     :root { --bg: #f6f7f9; --fg: #14181f; --sub: #5b6573; --card: #fff; --line: #dde2e8; --accent: #0e7490; }
     @media (prefers-color-scheme: dark) {
@@ -50,7 +50,8 @@
 
   <ol>
     <li>Use Chrome or Edge on a desktop. Web Serial isn't available in Firefox or Safari.</li>
-    <li>Plug the board in over USB and close any running <code>panoptes</code> agent, so the port is free.</li>
+    <li>Plug the board in over USB and free the port: run <code>panoptes pause</code> if the agent is
+      running (as a service too), then <code>panoptes resume</code> once the board has rebooted.</li>
     <li>After flashing, install the host agent from the
       <a href="https://github.com/dhruvinsh/panoptes/releases/latest">latest release</a> and run <code>panoptes</code>.</li>
   </ol>

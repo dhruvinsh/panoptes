@@ -8,10 +8,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dhruvinsh/panoptes/internal/config"
 	"github.com/dhruvinsh/panoptes/internal/frame"
 	"github.com/dhruvinsh/panoptes/internal/logx"
+	"github.com/dhruvinsh/panoptes/internal/pause"
 )
 
 func mustParse(t *testing.T, args ...string) *Parsed {
@@ -252,5 +254,43 @@ func TestBrightnessOptions(t *testing.T) {
 				t.Errorf("%s=%s should be rejected", flag, v)
 			}
 		}
+	}
+}
+
+func TestPauseArgs(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want time.Duration
+	}{
+		{[]string{"pause"}, 10 * time.Minute},
+		{[]string{"pause", "90s"}, 90 * time.Second},
+		{[]string{"-v", "pause", "2"}, 2 * time.Minute},
+	} {
+		p := mustParse(t, tc.args...)
+		if p.Command != "pause" || p.For != tc.want {
+			t.Fatalf("%v: got %q %v, want pause %v", tc.args, p.Command, p.For, tc.want)
+		}
+	}
+	for _, args := range [][]string{{"pause", "soon"}, {"pause", "-5m"}, {"pause", "5m", "x"}, {"resume", "5m"}, {"run", "5m"}} {
+		if _, err := Parse(args); err == nil {
+			t.Fatalf("%v: expected an error", args)
+		}
+	}
+}
+
+func TestPauseResumeCommands(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var out, errb bytes.Buffer
+	if code := Main("test", []string{"pause", "5m"}, &out, &errb); code != 0 {
+		t.Fatalf("pause: exit %d: %s", code, errb.String())
+	}
+	if until := pause.Until(); time.Until(until) < 4*time.Minute {
+		t.Fatalf("pause file says %v", until)
+	}
+	if code := Main("test", []string{"resume"}, &out, &errb); code != 0 {
+		t.Fatalf("resume: exit %d: %s", code, errb.String())
+	}
+	if until := pause.Until(); !until.IsZero() {
+		t.Fatalf("still paused until %v", until)
 	}
 }
