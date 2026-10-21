@@ -337,6 +337,12 @@ the first 3, then per-core CPU values are dropped. A typical frame is ~1 KB.
 - **Port busy:** another program (Arduino IDE serial monitor, `screen`, a second panoptes) has it
   open. On Linux/macOS panoptes opens the port exclusively. To flash firmware while the agent (or
   its service) is running, use `panoptes pause` ([above](#flashing-while-the-agent-runs)).
+- **Web flasher can't connect:** a browser can't drive the CYD's auto-reset (Web Serial changes DTR
+  and RTS one at a time, and this board's reset circuit needs both to flip together, which native
+  esptool does). Put the board in download mode by hand: hold BOOT, tap RST, release BOOT.
+- **Web flasher says the port was lost (Linux):** Chrome before 156 treats a tty left with
+  `min = 0` by a pyserial tool (esptool, `pio device monitor`) as unplugged. Run
+  `stty -F /dev/ttyUSB0 min 1` or update Chrome.
 - **No temperatures on Linux:** run `sensors` (lm_sensors); if it shows nothing, load the right
   hwmon driver (`sensors-detect`).
 - **No GPU:** NVIDIA needs `nvidia-smi` (ships with the driver). Intel and Apple GPUs aren't

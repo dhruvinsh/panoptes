@@ -30,8 +30,9 @@ stay off: no network setup, no cloud, nothing to pair.
 ## Quick start
 
 1. **Flash the board.** Open the **[web flasher](https://dhruvinsh.github.io/panoptes/)** in
-   Chrome or Edge and click *Flash*. If the agent is already running, run `panoptes pause` first
-   so it frees the port, and `panoptes resume` afterwards. Or use esptool with a `*-factory.bin` from the
+   Chrome or Edge, put the board in download mode (**hold BOOT, tap RST, release BOOT**) and click
+   *Flash*. If the agent is already running, run `panoptes pause` first so it frees the port, and
+   `panoptes resume` afterwards. Or use esptool with a `*-factory.bin` from the
    [latest release](https://github.com/dhruvinsh/panoptes/releases/latest):
    ```sh
    esptool --chip esp32 -b 460800 write-flash 0 panoptes-firmware-<ver>-st7789-factory.bin
@@ -70,7 +71,7 @@ stay off: no network setup, no cloud, nothing to pair.
 | [docs/host.md](docs/host.md), [docs/config.example.toml](docs/config.example.toml) | Agent install, config file, services, sensors per OS, troubleshooting |
 | [schema/](schema/) | JSON Schema for `config.toml` (editor completion), generated from the agent |
 | [packaging/](packaging/) | udev rule (`/dev/panoptes`) |
-| [web/](web/) | ESP Web Tools flasher, deployed to GitHub Pages on release |
+| [web/](web/) | Browser flasher (esptool-js over Web Serial), deployed to GitHub Pages on release |
 
 ## Building from source
 

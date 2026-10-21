@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Panoptes Flasher</title>
-  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
   <style>
-    :root { --bg: #f6f7f9; --fg: #14181f; --sub: #5b6573; --card: #fff; --line: #dde2e8; --accent: #0e7490; }
+    :root { --bg: #f6f7f9; --fg: #14181f; --sub: #5b6573; --card: #fff; --line: #dde2e8; --accent: #0e7490;
+            --ok: #15803d; --bad: #b91c1c; }
     @media (prefers-color-scheme: dark) {
-      :root { --bg: #000; --fg: #f2f5f8; --sub: #a3aebb; --card: #0f161f; --line: #263241; --accent: #22d3ee; }
+      :root { --bg: #000; --fg: #f2f5f8; --sub: #a3aebb; --card: #0f161f; --line: #263241; --accent: #22d3ee;
+              --ok: #4ade80; --bad: #f87171; }
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--fg);
@@ -20,11 +21,25 @@
             padding: 20px; margin-bottom: 16px; }
     .card h2 { margin: 0 0 4px; font-size: 1.1rem; }
     .card p { margin: 0 0 16px; color: var(--sub); }
-    esp-web-install-button button { font: inherit; font-weight: 600; padding: 10px 18px; border: 0;
-            border-radius: 8px; background: var(--accent); color: var(--bg); cursor: pointer; }
+    button { font: inherit; font-weight: 600; padding: 10px 18px; border: 0; border-radius: 8px;
+             background: var(--accent); color: var(--bg); cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
     ol { padding-left: 20px; color: var(--sub); }
-    code { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+    li { margin-bottom: 6px; }
+    code { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+           overflow-wrap: anywhere; }
     a { color: var(--accent); }
+    label { color: var(--sub); display: flex; gap: 8px; align-items: center; margin: 16px 0 0; }
+    #status { display: none; }
+    #status.show { display: block; }
+    #msg { margin: 0 0 12px; color: var(--fg); }
+    #msg.ok { color: var(--ok); }
+    #msg.bad { color: var(--bad); }
+    progress { width: 100%; height: 10px; accent-color: var(--accent); }
+    details { margin-top: 12px; color: var(--sub); }
+    pre { margin: 8px 0 0; max-height: 240px; overflow: auto; font-size: 12px; white-space: pre-wrap;
+          overflow-wrap: anywhere; }
+    .nosupport { color: var(--bad); }
   </style>
 </head>
 <body>
@@ -32,29 +47,163 @@
   <h1>Panoptes</h1>
   <p class="tag">All-seeing PC monitor for the ESP32 "Cheap Yellow Display" (ESP32-2432S028R).</p>
 
+  <p id="nosupport" class="nosupport" hidden>This browser has no Web Serial. Use Chrome or Edge on a desktop.</p>
+
+  <ol>
+    <li>Plug the board in over USB. If the agent is running (as a service too), run
+      <code>panoptes pause</code> so it frees the port.</li>
+    <li>Put the board in download mode: <strong>hold BOOT, tap RST, release BOOT</strong>. The screen goes
+      dark. (The CYD's auto-reset doesn't work from a browser.)</li>
+    <li>Click a Flash button below and pick the board's serial port (CH340 / USB Serial).</li>
+  </ol>
+
   <div class="card">
     <h2>ST7789 panel</h2>
     <p>The panel on the reference board. Pick this first.</p>
-    <esp-web-install-button manifest="manifest-st7789.json">
-      <button slot="activate">Flash ST7789 build</button>
-    </esp-web-install-button>
+    <button data-panel="st7789">Flash ST7789 build</button>
   </div>
 
   <div class="card">
     <h2>ILI9341 panel</h2>
     <p>If the ST7789 build shows a scrambled picture, flash this one instead.</p>
-    <esp-web-install-button manifest="manifest-ili9341.json">
-      <button slot="activate">Flash ILI9341 build</button>
-    </esp-web-install-button>
+    <button data-panel="ili9341">Flash ILI9341 build</button>
   </div>
 
-  <ol>
-    <li>Use Chrome or Edge on a desktop. Web Serial isn't available in Firefox or Safari.</li>
-    <li>Plug the board in over USB and free the port: run <code>panoptes pause</code> if the agent is
-      running (as a service too), then <code>panoptes resume</code> once the board has rebooted.</li>
-    <li>After flashing, install the host agent from the
-      <a href="https://github.com/dhruvinsh/panoptes/releases/latest">latest release</a> and run <code>panoptes</code>.</li>
+  <label><input type="checkbox" id="erase"> Erase the whole flash first (resets saved settings)</label>
+
+  <div class="card" id="status" aria-live="polite">
+    <p id="msg"></p>
+    <progress id="bar" max="100" value="0"></progress>
+    <details>
+      <summary>Log</summary>
+      <pre id="log"></pre>
+    </details>
+  </div>
+
+  <ol start="4">
+    <li>When it's done the board reboots into Panoptes. Run <code>panoptes resume</code>, or install the host
+      agent from the <a href="https://github.com/dhruvinsh/panoptes/releases/latest">latest release</a> and run
+      <code>panoptes</code>.</li>
   </ol>
 </main>
+<script type="module">
+  const buttons = [...document.querySelectorAll("button[data-panel]")];
+  const $ = (id) => document.getElementById(id);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  if (!("serial" in navigator)) {
+    $("nosupport").hidden = false;
+    buttons.forEach((b) => (b.disabled = true));
+  }
+
+  let logText = "";
+  const term = {
+    clean() {},
+    write(s) { logText += s; $("log").textContent = logText; },
+    writeLine(s) { term.write(s + "\n"); },
+  };
+  const say = (text, cls = "") => {
+    $("status").classList.add("show");
+    $("msg").textContent = text;
+    $("msg").className = cls;
+  };
+
+  const HINT_DOWNLOAD = "Couldn't reach the bootloader. Hold BOOT, tap RST, release BOOT, then click Flash again. " +
+    "Also check nothing else has the port open (run `panoptes pause`).";
+  // Chrome before 156 on Linux treats a tty left with VMIN=0 (by pyserial tools such as
+  // esptool or `pio device monitor`) as unplugged as soon as a read finds no data.
+  const HINT_LOST = "The browser lost the serial port right after opening it. On Linux with Chrome older " +
+    "than 156, run `stty -F /dev/ttyUSB0 min 1` (your port name may differ), or update Chrome, then try again.";
+
+  let esptool;
+  async function connect(port, mode) {
+    esptool ??= await import("https://unpkg.com/esptool-js@0.6.0/bundle.js");
+    const transport = new esptool.Transport(port, false);
+    const loader = new esptool.ESPLoader({ transport, baudrate: 460800, terminal: term });
+    try {
+      await loader.main(mode);
+      return { transport, loader };
+    } catch (err) {
+      term.writeLine(`[${mode}] ${err.message || err}`);
+      try { await transport.disconnect(); } catch {}
+      return null;
+    }
+  }
+
+  async function flash(panel) {
+    const manifest = await (await fetch(`manifest-${panel}.json`, { cache: "no-store" })).json();
+    const part = manifest.builds[0].parts[0];
+    let port;
+    try {
+      port = await navigator.serial.requestPort();
+    } catch {
+      return; // picker cancelled
+    }
+    logText = "";
+    $("log").textContent = "";
+    $("bar").value = 0;
+    say(`Connecting to the board...`);
+    const image = fetch(new URL(part.path, location.href), { cache: "no-store" })
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`download failed: ${r.status}`))));
+
+    // A board already in download mode (BOOT + RST) must not be reset again, so try
+    // without a reset first. Boards whose auto-reset works from the browser get it second.
+    let conn = await connect(port, "no_reset");
+    if (!conn) {
+      say("Trying the auto-reset...");
+      await sleep(100);
+      conn = await connect(port, "default_reset");
+    }
+    if (!conn) {
+      say(/device has been lost/i.test(logText) ? HINT_LOST : HINT_DOWNLOAD, "bad");
+      $("log").parentElement.open = true;
+      return;
+    }
+    const { transport, loader } = conn;
+    try {
+      const data = new Uint8Array(await image);
+      if ($("erase").checked) {
+        say("Erasing flash (about 15 s)...");
+        await loader.eraseFlash();
+      }
+      say(`Writing ${manifest.name} ${manifest.version}...`);
+      await loader.writeFlash({
+        fileArray: [{ data, address: part.offset }],
+        flashMode: "keep", flashFreq: "keep", flashSize: "keep",
+        eraseAll: false, compress: true,
+        reportProgress: (_, written, total) => { $("bar").value = (written / total) * 100; },
+      });
+      $("bar").value = 100;
+      // Reboot into the app. Opening the port asserts DTR, and esptool-js's hard reset only
+      // pulses RTS, which leaves DTR+RTS both high: no reset on the CYD. Drop DTR first so
+      // every step changes one line (Web Serial can't change two at once).
+      term.writeLine("Resetting into the app...");
+      await port.setSignals({ dataTerminalReady: false });
+      await port.setSignals({ requestToSend: true });
+      await sleep(100);
+      await port.setSignals({ requestToSend: false });
+      say(`Done: ${manifest.name} ${manifest.version} installed, the board is rebooting.`, "ok");
+    } catch (err) {
+      term.writeLine(String(err.message || err));
+      say(`Flashing failed: ${err.message || err}. Put the board in download mode and try again.`, "bad");
+      $("log").parentElement.open = true;
+    } finally {
+      try { await transport.disconnect(); } catch {}
+    }
+  }
+
+  for (const b of buttons) {
+    b.addEventListener("click", async () => {
+      buttons.forEach((x) => (x.disabled = true));
+      try {
+        await flash(b.dataset.panel);
+      } catch (err) {
+        say(String(err.message || err), "bad");
+      } finally {
+        buttons.forEach((x) => (x.disabled = false));
+      }
+    });
+  }
+</script>
 </body>
 </html>
